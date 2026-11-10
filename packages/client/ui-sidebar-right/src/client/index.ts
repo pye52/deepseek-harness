@@ -89,6 +89,15 @@ const NS = 'sidebarRight'
 export const inject = ['contextMenus', 'slots', 'layout', 'locale', 'resources', 'sessions', 'uiSession', 'shortcuts']
 
 declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Test whether an active panel allows the right sidebar surface to show.
+     * @mode bail
+     * @param panelId - active main panel identifier, or null for conversation.
+     * @returns true when the panel permits the right sidebar.
+     */
+    'sidebarRight/panel-visible'(panelId: string | null): boolean | undefined
+  }
   interface Context {
     /** Right-Sidebar navigation and presentation face. */
     sidebarRight: SidebarRightController
@@ -161,6 +170,9 @@ export function apply(ctx: ClientContext): void {
     children: { 'sidebar.right.tab.menu.item': { kind: 'list', scope: 'session' } },
     inject: () => ({ hooks: { views: views.source } }),
   }, TabMenuContent)), 'sidebar: menu extensions')
+  const isPanelVisible = (panelId: string | null): boolean => {
+    return ctx.bail(ctx, 'sidebarRight/panel-visible', panelId) ?? (panelId === null)
+  }
   // The Session on screen: the selected one while the Conversation fills the
   // main column. Both sources notify before React renders their change, so the
   // service names the arriving Session before any component of that commit
@@ -168,7 +180,8 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     const sync = (): void => {
       const selected = views.source.getSnapshot().find(view => view.selected)
-      show(layout.panelInfo.getSnapshot().activePanelId === null ? selected?.sessionId : undefined)
+      const panelId = layout.panelInfo.getSnapshot().activePanelId
+      show(isPanelVisible(panelId) ? selected?.sessionId : undefined)
     }
     const unsubscribeViews = views.source.subscribe(sync)
     const unsubscribePanel = layout.panelInfo.subscribe(sync)
@@ -237,6 +250,7 @@ export function apply(ctx: ClientContext): void {
         inject: (): RightbarRootInjected => ({
           hooks: { views: views.source },
           mountView: reference => views.mount(reference),
+          isPanelVisible,
         }),
       }, RightbarRoot)
       yield ctx.slots.register({

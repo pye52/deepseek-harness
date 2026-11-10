@@ -30,6 +30,14 @@ WebCross 为嵌入配置档提供独立的数据目录和工作目录，避免�
 
 原因是独立应用的基础样式会作用于 `html`、`body`、字体及窗口拖动区域，直接导入会影响 WebCross 整个工作台。嵌入入口共享客户端启动、失败处理和释放机制；文档样式、传输接线和页面组合由宿主负责。该入口并不自动将全部 DSH 样式隔离到局部容器。
 
+### 允许自定义面板挂载右侧栏与保留面板会话切换
+
+[navigation.ts](packages/client/ui-workspace/src/client/navigation.ts) 为 `openSession` 增加可选的 `{ panel?: 'reveal' | 'preserve' }` 选项，透出底层已有的 `replaceMain` 面板保留能力，默认保持 `'reveal'` 不变。`uiWorkspace` 接口与其实现同步支持该参数。
+
+[index.ts](packages/client/ui-sidebar-right/src/client/index.ts) 增加 `sidebarRight/panel-visible` 事件定义并在 `apply` 中通过 `ctx.bail` 触发该钩子，将原本仅在 `activePanelId === null`（会话主面板）时允许右侧栏在屏的判定泛化；同时在 `rightbar` 插槽注入中透出 `isPanelVisible`。[RightbarRoot.tsx](packages/client/ui-sidebar-right/src/client/shell/RightbarRoot.tsx) 接收并在 `usePanelInfo` 中使用该判定。
+
+原因是 WebCross 的任务面板（`webcross-dsh`）等非会话面板需要原地查看会话产生的任务文件与截图预览，若使用原 `openSession` 会强制切回会话视图。通过开放面板保留选项和声明式事件钩子，外部插件只需监听该事件即可认领右侧栏挂载资格，无需在 DSH 核心源码中硬编码外部面板标识，同时完全保留原有会话面板的默认行为和向后兼容性。
+
 ## 取舍与后续维护
 
 没有复制会话组件或完整嵌入独立应用外壳：复制会增加后续同步成本，完整外壳则不满足工作台的精简需求。当前复用 DSH 插件、配置档、插槽和客户端生命周期，仅补充宿主启动和样式入口。
