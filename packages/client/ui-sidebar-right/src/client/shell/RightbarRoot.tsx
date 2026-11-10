@@ -10,6 +10,7 @@ import css from './SidebarRight.module.css'
 export interface RightbarRootInjected {
   readonly hooks: { readonly views: HostObservable<readonly SidebarSessionViewSnapshot[]> }
   readonly mountView: (reference: SessionReference) => () => void
+  readonly isPanelVisible?: (panelId: string | null) => boolean
 }
 
 type RootProps = PropsRuntime<'rightbar'> & PropsRenderSlots<'rightbar.session'> & InjectFace<RightbarRootInjected>
@@ -31,8 +32,8 @@ function SessionView({ view, visible, SessionProvider, renderSlot, mountView, wi
  * @param props - frame geometry, view targets and the authorized Session renderer.
  * @returns the foreground and retained background Sidebars.
  */
-export function RightbarRoot({ usePanelInfo, useViews, ...props }: RootProps) {
-  const visible = usePanelInfo(info => info.activePanelId === null)
+export function RightbarRoot({ usePanelInfo, useViews, isPanelVisible, ...props }: RootProps) {
+  const visible = usePanelInfo(info => isPanelVisible ? isPanelVisible(info.activePanelId) : info.activePanelId === null)
   const views = useViews(value => value)
   return <>{views.map(view => <SessionView key={view.sessionId} {...props} view={view} visible={visible} />)}</>
 }

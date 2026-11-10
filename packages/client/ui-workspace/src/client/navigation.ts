@@ -39,10 +39,11 @@ export interface StartSessionOptions extends DraftInitializationOptions {
 /** Workspace archive and directory operations consumed by Client UI domains. */
 export interface UiWorkspace {
   /**
-   * Select a Session and show its Conversation as one UI navigation action.
+   * Select a Session and optionally show its Conversation as one UI navigation action.
    * @param target - known Session identity or durable direct-parent subagent address to display.
+   * @param options - disposition for the current panel; 'reveal' (default) selects Conversation, 'preserve' keeps it.
    */
-  openSession(target: SessionTarget): void
+  openSession(target: SessionTarget, options?: { panel?: 'reveal' | 'preserve' }): void
   /**
    * Connect a Workspace and open its Session unless a later navigation supersedes it.
    * @param workspaceId - target Workspace.
@@ -290,8 +291,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     }
   }
 
-  openSession(target: SessionTarget): void {
-    this.replaceMain(target, this.lifetime.signal, 'reveal')
+  openSession(target: SessionTarget, options?: { panel?: 'reveal' | 'preserve' }): void {
+    this.replaceMain(target, this.lifetime.signal, options?.panel ?? 'reveal')
   }
 
   openWorkspace(
