@@ -23,6 +23,10 @@
     "./injections": {
       "types": "./lib/types/apply-injections.d.ts",
       "default": "./lib/apply-injections.js"
+    },
+    "./embedded": {
+      "types": "./lib/types/embedded.d.ts",
+      "default": "./lib/embedded.js"
     }
   },
   "license": "MIT",
@@ -48,6 +52,7 @@
   },
   "files": [
     "lib/index.js",
+    "lib/embedded.js",
     "lib/**/*.css",
     "lib/apply-injections.js",
     "lib/types/**/*.d.ts",

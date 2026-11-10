@@ -259,6 +259,17 @@ export interface RunProfileOptions {
   args: readonly string[]
   /** Application-owned package runtime, scoped to plugin package operations. */
   packageManager?: ProfileContext['packageManager']
+  /** Embedding host owns process policies and resolves its closed plugin set through native Node lookup. */
+  host?: {
+    /** Harness state root owned by the embedding application. */
+    readonly home: string
+    /** Working directory exposed to profile plugins. */
+    readonly cwd: string
+    /** Forward an application exit request without terminating the shared process. */
+    readonly requestExit: (code: number) => void
+    /** Install host-owned services before the profile entries mount. */
+    readonly prepare?: (ctx: Context) => Promise<void>
+  }
 }
 
 /**
@@ -286,10 +297,12 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
   // proxy environment on its own, so every profile would otherwise connect directly. Resolving from
   // the launcher's snapshot — not `process.env` — is what lets a proxy declared in a `.env` layer
   // work, which the NODE_USE_ENV_PROXY flag cannot do because Node samples the environment at start.
-  const disposeProxy = await installProxyFromEnvironment(
-    options.environment,
-    (message) => { process.stderr.write(`${NAME}: ${message}\n`) },
-  )
+  const disposeProxy = options.host === undefined
+    ? await installProxyFromEnvironment(
+      options.environment,
+      (message) => { process.stderr.write(`${NAME}: ${message}\n`) },
+    )
+    : () => Promise.resolve()
 
   const app: { current?: Context } = {}
   let disposal: Promise<void> | undefined
@@ -306,7 +319,12 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
       options.profile, options.patchFiles, options.fromDefaultProfile, options.resolvedProfile,
     )
     const appReady = createAppReady()
-    const shutdown = createProcessShutdown(dispose)
+    const shutdown: ProcessShutdown = options.host === undefined
+      ? createProcessShutdown(dispose)
+      : {
+        shutdown: async () => { await dispose() },
+        interrupt: (code) => { options.host?.requestExit(code) },
+      }
     const signalShutdown = new AbortController()
     const interrupt = (code: number): void => {
       signalShutdown.abort()
@@ -317,11 +335,13 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
     // SIGTERM is a supervisor's ordinary stop request and exits 0 on every
     // surface — the launcher does not know whether the app considered its work
     // complete; SIGINT is a user interrupt and reports 130.
-    process.on('SIGTERM', () => { interrupt(0) })
-    process.on('SIGINT', () => { interrupt(130) })
-    installFailLoud(NAME, process, async () => {
-      await app.current?.fiber.dispose()
-    })
+    if (options.host === undefined) {
+      process.on('SIGTERM', () => { interrupt(0) })
+      process.on('SIGINT', () => { interrupt(130) })
+      installFailLoud(NAME, process, async () => {
+        await app.current?.fiber.dispose()
+      })
+    }
 
     const rootConfig = join(composed.profile.dir, PROFILE_ROOT_FILENAME)
     const profileContext: ProfileContext = {
@@ -330,7 +350,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
       dir: composed.profile.dir, patchPath: composed.profile.patchPath,
       installAnchor: options.resolvedProfile?.installAnchor ?? INSTALL_ANCHOR,
       startedBundles: composed.profile.layers.map(layer => layer.packageName),
-      cwd: process.cwd(), home: resolveDshHome(),
+      cwd: options.host?.cwd ?? process.cwd(), home: options.host?.home ?? resolveDshHome(),
       overlays: composed.overlays, telemetryDisabledEnv: process.env.DSH_TELEMETRY_DISABLED,
     }
     const ctx = await boot(NAME, rootConfig, readProfilePatches(NAME, profileContext, composed.profile), async (hostCtx) => {
@@ -340,15 +360,19 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
       // environment values from the same immutable launch snapshot.
       hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment)
       await hostCtx.plugin(PluginPackages, {
-        resolution: composed.resolution,
+        ...(options.host === undefined ? { resolution: composed.resolution } : {}),
       })
       // The command line and bounded exit request are launcher facts available
       // to every app plugin that injects the argument snapshot.
       provideCmdline(hostCtx, {
         args: options.args,
-        exit: code => void shutdown.shutdown(code),
+        exit: (code) => {
+          if (options.host === undefined) void shutdown.shutdown(code)
+          else options.host.requestExit(code)
+        },
         ready: appReady.service,
       })
+      await options.host?.prepare?.(hostCtx)
     })
     app.current = ctx
     if (!signalShutdown.signal.aborted

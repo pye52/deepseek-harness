@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { inspect, parseEnv } from 'node:util'
 import { captureStartupComposition, type StartupCompositionDiagnostic } from './startup-diagnostics.ts'
 export type { StartupCompositionDiagnostic, StartupPluginState, StartupServiceState } from './startup-diagnostics.ts'
-import { basename, dirname, isAbsolute, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { Context, type Fiber, type FiberState } from '@deepseek-ai/cordis'
 import Loader, { type Entry, type EntryGroup, type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import Include, { applyEntryPatches, parseEntryYaml, stringifyEntryYaml, type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
@@ -1234,8 +1234,14 @@ export async function boot(
   let stage = 'host preparation failed'
   try {
     ctx.baseUrl = pathToFileURL(dirname(absoluteConfigPath)).href + '/'
-    ctx.provide('dshHomePath', dshHomePath)
-    ctx.provide('dshPath', dshPath)
+    // Embedding hosts supply a profile-local home without mutating process.env.
+    const resolveProfileDshHome = (): string => ctx.get('profileContext')?.home ?? resolveDshHome()
+    ctx.provide('dshHomePath', (...segments: string[]) =>
+      join(resolveProfileDshHome(), ...segments))
+    ctx.provide('dshPath', (location: Parameters<typeof dshPath>[0], ...segments: string[]) =>
+      dshPath(typeof location === 'string'
+        ? { category: location, dshHome: resolveProfileDshHome() }
+        : { ...location, dshHome: location.dshHome ?? resolveProfileDshHome() }, ...segments))
     await ctx.plugin(Loader)
     await prepare?.(ctx)
     stage = 'plugin tree failed to load'
