@@ -38,6 +38,12 @@ WebCross 为嵌入配置档提供独立的数据目录和工作目录，避免�
 
 原因是 WebCross 的任务面板（`webcross-dsh`）等非会话面板需要原地查看会话产生的任务文件与截图预览，若使用原 `openSession` 会强制切回会话视图。通过开放面板保留选项和声明式事件钩子，外部插件只需监听该事件即可认领右侧栏挂载资格，无需在 DSH 核心源码中硬编码外部面板标识，同时完全保留原有会话面板的默认行为和向后兼容性。
 
+### 本地媒体文件路由支持宿主资源解析钩子
+
+[workspace-path/src/index.ts](packages/util/workspace-path/src/index.ts) 中的 `fileMediaUrl` 在构造 `api/file?path=...` 地址时，优先检查全局传输对象 `__DSH_TRANSPORT__.resolveAsset`；当宿主返回桌面端 `//app/api/file?` 协议地址时直接采用，否则回退到基于 `base`（`document.baseURI`）的原有解析逻辑。[render.tsx](packages/client/ui-primitives/src/markdown/render.tsx) 中的 `vocabularyImageUrl` 将原本固定匹配 `dsh-app://app/api/...` 的桌面媒体路由白名单泛化为匹配任意合法 scheme 下的 `//app/api/(file|plugin-market/detail-file|plugin-manager/detail-file)?`，与宿主自定义协议兼容。
+
+原因是独立 DSH 应用的 `document.baseURI` 直接对应提供 `/api/file` 服务的源站或 `dsh-app://app/`，而嵌入 WebCross 工作台时，渲染进程文档基址在开发态为 Vite 开发服务器（`http://localhost:5174/`，未挂载 DSH 的 `/api/file` 路由，会触发 SPA HTML 回退导致图片解码失败），在打包态为 `file://` 本地文件协议（会被 `fileMediaUrl` 直接拒绝）。通过复用宿主在挂载时已注入的 `__DSH_TRANSPORT__.resolveAsset` 钩子将本地文件媒体路由映射到 `webcross-harness://app/api/file?...`，即可经由 Electron 已注册的协议处理器转发至 DSH 后端 `SessionMediaReferences`，在不硬编码宿主协议名称的前提下同时打通开发态与打包态的会话消息及文档预览本地图片加载。
+
 ## 取舍与后续维护
 
 没有复制会话组件或完整嵌入独立应用外壳：复制会增加后续同步成本，完整外壳则不满足工作台的精简需求。当前复用 DSH 插件、配置档、插槽和客户端生命周期，仅补充宿主启动和样式入口。
