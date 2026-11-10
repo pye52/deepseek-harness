@@ -82,16 +82,14 @@ function remoteImageUrl(url: string): string | undefined {
 }
 
 /** Authenticated Host media routes as the Desktop application addresses them. */
-const DESKTOP_MEDIA_ROUTES = [
-  'dsh-app://app/api/file?', 'dsh-app://app/api/plugin-market/detail-file?', 'dsh-app://app/api/plugin-manager/detail-file?',
-]
+const DESKTOP_MEDIA_ROUTE = /^[a-z][a-z0-9+.-]*:\/\/app\/api\/(?:file|plugin-market\/detail-file|plugin-manager\/detail-file)\?/u
 
 /** Rewritten images may use Web media protocols or the Desktop application's media routes. */
 function vocabularyImageUrl(url: string): string | undefined {
   try {
     const protocol = new URL(url).protocol
     return protocol === 'http:' || protocol === 'https:' || protocol === 'blob:' || protocol === 'data:'
-      || DESKTOP_MEDIA_ROUTES.some(route => url.startsWith(route))
+      || DESKTOP_MEDIA_ROUTE.test(url)
       ? url
       : undefined
   } catch {
