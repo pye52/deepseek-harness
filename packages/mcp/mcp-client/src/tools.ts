@@ -24,7 +24,25 @@ import type { ToolDefinition, ToolExecution, ToolExecutionResult } from '@deepse
 import { assertSupportedJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import { describeError, McpLocalError, mcpRequestError, McpToolError } from './diagnostic.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Supplies transport metadata without changing model arguments.
+     * @param serverName - The target server name.
+     * @param execution - The current tool execution.
+     * @param next - Delegates to other metadata providers.
+     * @mode waterfall
+     */
+    'mcp/request-metadata'(
+      serverName: string,
+      execution: ToolExecution,
+      next: () => Promise<Record<string, JsonValue>>,
+    ): Promise<Record<string, JsonValue>>
+  }
+}
 
 /** Resolved options relevant to tool bridging. */
 export interface ToolBridgeOptions {
@@ -176,9 +194,13 @@ export async function syncTools(
           throw invalidResult(`its output schema cannot be compiled: ${outputCheck.compileError}`)
         }
         let result: Awaited<ReturnType<Client['callTool']>>
+        const metadata = await ctx.waterfall(
+          scopeTarget(ctx.tools, execution.agent), 'mcp/request-metadata',
+          opts.serverName, execution, async () => ({}),
+        )
         try {
           result = await client.callTool(
-            { name: tool.name, arguments: args },
+            { name: tool.name, arguments: args, ...(Object.keys(metadata).length ? { _meta: metadata } : {}) },
             { signal: AbortSignal.any([execution.signal, opts.signal]),
               timeout: opts.toolCallTimeoutMs, toolDefinition: callDefinition },
           )

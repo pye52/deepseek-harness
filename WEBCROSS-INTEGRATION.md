@@ -44,6 +44,12 @@ WebCross 为嵌入配置档提供独立的数据目录和工作目录，避免�
 
 原因是独立 DSH 应用的 `document.baseURI` 直接对应提供 `/api/file` 服务的源站或 `dsh-app://app/`，而嵌入 WebCross 工作台时，渲染进程文档基址在开发态为 Vite 开发服务器（`http://localhost:5174/`，未挂载 DSH 的 `/api/file` 路由，会触发 SPA HTML 回退导致图片解码失败），在打包态为 `file://` 本地文件协议（会被 `fileMediaUrl` 直接拒绝）。通过复用宿主在挂载时已注入的 `__DSH_TRANSPORT__.resolveAsset` 钩子将本地文件媒体路由映射到 `webcross-harness://app/api/file?...`，即可经由 Electron 已注册的协议处理器转发至 DSH 后端 `SessionMediaReferences`，在不硬编码宿主协议名称的前提下同时打通开发态与打包态的会话消息及文档预览本地图片加载。
 
+### MCP 工具请求转发宿主元数据
+
+[tools.ts](packages/mcp/mcp-client/src/tools.ts) 增加 `mcp/request-metadata` waterfall 事件，并在调用工具时按 `execution.agent` 作用域触发。事件接收 MCP 服务名和本次工具执行信息；扩展返回的非空元数据通过 MCP `callTool` 请求的 `_meta` 字段传递，结果为空时不发送该字段。模型提供的工具参数保持原样。
+
+该扩展点允许宿主或插件按 Agent 为 MCP 请求附加传输元数据，而不把这些字段混入模型参数。具体元数据字段及提供方由宿主侧管理；DSH 的 MCP 客户端负责触发扩展点并转发结果。此处记录源码接口能力，不表示 WebCross 侧的元数据提供方或真实 MCP 运行验收已经完成。
+
 ## 取舍与后续维护
 
 没有复制会话组件或完整嵌入独立应用外壳：复制会增加后续同步成本，完整外壳则不满足工作台的精简需求。当前复用 DSH 插件、配置档、插槽和客户端生命周期，仅补充宿主启动和样式入口。
