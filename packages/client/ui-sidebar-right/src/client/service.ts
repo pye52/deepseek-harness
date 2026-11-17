@@ -59,6 +59,12 @@ export interface SidebarRightSurfaceStore {
   subscribe(listener: () => void): () => void
 }
 
+/** Expansion of the on-screen Session's docked column, independent of floating panels. */
+export interface SidebarRightExpansion {
+  readonly sessionId: SessionId
+  readonly expanded: boolean
+}
+
 /** One adoption of a session's store; the token a release compares against. */
 interface Adoption {
   readonly store: SidebarRightSurfaceStore
@@ -76,6 +82,8 @@ interface SidebarRightSessions {
   readonly rooms: ReadonlyMap<SessionId, RoomRule>
   /** The Session the plugin names as on screen. */
   readonly onScreen: ObservableSnapshot<SessionId | undefined>
+  /** Expansion projected from the on-screen Session's adopted store. */
+  readonly expansion: ObservableSnapshot<SidebarRightExpansion | undefined>
   /** Open tab metadata across saved and adopted Sessions. */
   readonly openTabs: SidebarTabInventory['source']
   /** Each Session's flash source, created on first use and released when the Session is forgotten. */
@@ -100,9 +108,25 @@ export function createSidebarRightController(tabs: SidebarRightTabRegistry, pin:
   const adopted = new Map<SessionId, Adoption>()
   const rooms = new Map<SessionId, RoomRule>()
   const onScreen = createSnapshotStore<SessionId | undefined>(undefined)
+  const expansion = createSnapshotStore<SidebarRightExpansion | undefined>(undefined)
   const inventory = new SidebarTabInventory()
   const flashes = new Map<SessionId, SnapshotStore<SidebarRightFlash | undefined>>()
-  const controller = new SidebarRightController(tabs, pin, host, { adopted, rooms, onScreen, openTabs: inventory.source, flashes })
+  const controller = new SidebarRightController(tabs, pin, host, {
+    adopted, rooms, onScreen, expansion, openTabs: inventory.source, flashes,
+  })
+  const syncExpansion = (): void => {
+    const sessionId = onScreen.getSnapshot()
+    const surface = sessionId === undefined
+      ? undefined
+      : adopted.get(sessionId)?.store.getSnapshot().bySession[sessionId]
+    const previous = expansion.getSnapshot()
+    const next = sessionId !== undefined && surface !== undefined
+      ? { sessionId, expanded: surface.layout.expanded }
+      : undefined
+    if (previous?.sessionId !== next?.sessionId || previous?.expanded !== next?.expanded) {
+      expansion.set(next)
+    }
+  }
   return {
     controller,
     forget: (sessionId) => {
@@ -110,7 +134,10 @@ export function createSidebarRightController(tabs: SidebarRightTabRegistry, pin:
       rooms.delete(sessionId)
       flashes.delete(sessionId)
     },
-    show: (sessionId) => { if (onScreen.getSnapshot() !== sessionId) onScreen.set(sessionId) },
+    show: (sessionId) => {
+      if (onScreen.getSnapshot() !== sessionId) onScreen.set(sessionId)
+      syncExpansion()
+    },
     measure: (sessionId, canSplitPane) => { rooms.set(sessionId, canSplitPane) },
     adopt(sessionId, store) {
       adopted.get(sessionId)?.unsubscribe()
@@ -118,13 +145,17 @@ export function createSidebarRightController(tabs: SidebarRightTabRegistry, pin:
         const surface = store.getSnapshot().bySession[sessionId]
         inventory.update(sessionId, Object.values(surface?.layout.tabs ?? {}))
         if (surface !== undefined) controller.tabDomain.sync(sessionId, surface.layout)
+        syncExpansion()
       }
       const adoption: Adoption = { store, unsubscribe: store.subscribe(sync) }
       adopted.set(sessionId, adoption)
       sync()
       return () => {
         adoption.unsubscribe()
-        if (adopted.get(sessionId) === adoption) adopted.delete(sessionId)
+        if (adopted.get(sessionId) === adoption) {
+          adopted.delete(sessionId)
+          syncExpansion()
+        }
       }
     },
   }
@@ -225,6 +256,12 @@ export interface ISidebarRight {
    */
   readonly mounted: ObservableSnapshot<SessionId | undefined>
   /**
+   * Current dock expansion, published synchronously after store commits and
+   * Session changes; undefined without an adopted on-screen surface. Changes
+   * to tabs, floating panels, or background Sessions alone do not notify.
+   */
+  readonly expansion: ObservableSnapshot<SidebarRightExpansion | undefined>
+  /**
    * Open a resource: claim it, place it, reveal the column, record the navigation.
    *
    * Without `options.kind` the registry ranks the types whose globs and
@@ -303,6 +340,8 @@ export class SidebarRightController implements ISidebarRight {
   readonly openTabs: SidebarTabInventory['source']
   /** The on-screen Session; see {@link ISidebarRight.mounted}. */
   readonly mounted: ObservableSnapshot<SessionId | undefined>
+  /** Dock expansion of the on-screen Session; see {@link ISidebarRight.expansion}. */
+  readonly expansion: ObservableSnapshot<SidebarRightExpansion | undefined>
   private readonly adopted: ReadonlyMap<SessionId, Adoption>
   private readonly rooms: ReadonlyMap<SessionId, RoomRule>
   private readonly closeHandlers = new Map<string, SidebarRightCloseHandler>()
@@ -341,6 +380,7 @@ export class SidebarRightController implements ISidebarRight {
     this.adopted = sessions.adopted
     this.rooms = sessions.rooms
     this.mounted = sessions.onScreen
+    this.expansion = sessions.expansion
     this.openTabs = sessions.openTabs
     this.flashes = sessions.flashes
     this.tabDomain = new TabDomain(this, pin)

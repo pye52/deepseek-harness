@@ -63,3 +63,9 @@ WebCross 专属布局、主题、传输与运行环境开关继续留在 WebCros
 [resolved-profile-boot.spec.ts](apps/cli/tests/resolved-profile-boot.spec.ts) 保持上游原有内容，覆盖共享配置档启动、运行时解析和关闭；不在 DSH 原有单元测试中增加 WebCross 嵌入场景。整合验证由 WebCross 仓库的 Harness 运行时测试及开发环境检查承担。
 
 此前开发验证已在定制 Electron 44.9.3 / Node 24.22.0 中完成配置档启动和空会话渲染；工作台资源协议注册顺序的修复位于 WebCross 仓库。真实模型任务、人工接管、完整应用启动组合和跨平台发行仍不属于已完成验收。文档与单元测试的清理不改变功能源码，也不重新声明这些运行验证通过。
+
+### 内嵌侧栏展开状态
+
+[侧栏服务](packages/client/ui-sidebar-right/src/client/service.ts) 增加只读的 `expansion`，通过[客户端入口](packages/client/ui-sidebar-right/src/client/index.ts) 导出 `SidebarRightExpansion` 类型。数据为 `{ sessionId, expanded }`，无当前已挂载会话时为 `undefined`；会话切换、存储提交和卸载时同步更新，后台会话和浮窗变化不会单独触发通知。
+
+WebCross 宿主订阅该状态，复用现有公开展开方法实现文件预览与实时监控互斥；互斥规则和关闭期间的内容显隐均留在宿主。独立 DSH 以官方 `0.2.2-rc.3` 为兼容基线，保持原生标签关闭行为，不依赖这个观察入口。工作流引用使用原生输入触发器注册和候选字段，不扩展菜单接口；WebCross 页面由独立插件的本机宿主接口唤起。
