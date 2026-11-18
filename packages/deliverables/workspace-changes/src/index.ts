@@ -33,6 +33,8 @@ export const inject = ['subprocess', 'fs']
 
 /** Snapshot, capture, and comparison bounds. Invalid values fail plugin load. */
 export interface Config {
+  /** Capture Git snapshots; false records file-tool edits without executable lookup or subprocesses. */
+  gitSnapshots: boolean
   /** Milliseconds one git command may run before the turn's record is abandoned. */
   timeoutMs: number
   /** Bytes of git output retained per command; a larger diff listing abandons the record. */
@@ -50,6 +52,7 @@ export interface Config {
 
 /** Schemastery validation for {@link Config}. */
 export const Config: z<Config> = z.object({
+  gitSnapshots: z.boolean().default(true),
   timeoutMs: z.number().default(30_000),
   outputMaxBytes: z.number().default(8 * 1024 * 1024),
   maxFiles: z.number().default(500),
@@ -122,6 +125,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.provide('workspaceChanges', service)
   let runner: Promise<GitRunner | null> | undefined
   const gitRunner = (): Promise<GitRunner | null> => {
+    if (!config.gitSnapshots) return Promise.resolve(null)
     runner ??= resolveGit(ctx, lifetime.signal).then((executable) => {
       if (executable === null) {
         ctx.logger.info('workspace-changes: git is unavailable; only file-tool edits are summarized')
