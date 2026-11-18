@@ -30,6 +30,8 @@ WebCross 为嵌入配置档提供独立的数据目录和工作目录，避免�
 
 原因是独立应用的基础样式会作用于 `html`、`body`、字体及窗口拖动区域，直接导入会影响 WebCross 整个工作台。嵌入入口共享客户端启动、失败处理和释放机制；文档样式、传输接线和页面组合由宿主负责。该入口并不自动将全部 DSH 样式隔离到局部容器。
 
+[插件加载器](vendor/loader/src/config/tree.ts) 仅在存在 Node.js 的 `process` 且平台为 Windows 时转换盘符路径，避免 WebCross 渲染进程在调用模块导入器前报错。保留宿主的进程隔离配置，无需注入 `process` 或调整构建配置。
+
 ### 允许自定义面板挂载右侧栏与保留面板会话切换
 
 [navigation.ts](packages/client/ui-workspace/src/client/navigation.ts) 为 `openSession` 增加可选的 `{ panel?: 'reveal' | 'preserve' }` 选项，透出底层已有的 `replaceMain` 面板保留能力，默认保持 `'reveal'` 不变。`uiWorkspace` 接口与其实现同步支持该参数。

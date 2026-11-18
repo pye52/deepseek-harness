@@ -228,7 +228,11 @@ export abstract class EntryTree {
       return this.ctx.loader.builtins[name.slice(7)]
     }
     // On Windows, a drive-letter path is converted with `pathToFileURL`.
-    if (process.platform === 'win32' && driveLetter.test(name)) {
+    if (
+      typeof process !== 'undefined'
+      && process.platform === 'win32'
+      && driveLetter.test(name)
+    ) {
       name = url.pathToFileURL(name).href
     }
     // to tell `name` apart from a module it imports
